@@ -1,6 +1,14 @@
 import type { Action } from 'svelte/action';
 import { spring, tweened, type Spring, type Tweened } from 'svelte/motion';
 
+export type TransitionOpts = {
+	type?: 'spring' | 'tween';
+	delay: number;
+	delayChildren: number;
+	staggerChildren: number;
+	staggerDirection: number;
+};
+
 export type SpringOpts = {
 	type?: 'spring';
 	stiffness?: number;
@@ -14,45 +22,82 @@ export type TweenOpts = {
 	easing?: (t: number) => number;
 };
 
+export type AnimateOpts = {
+	x?: number;
+	y?: number;
+	scale?: number;
+	opacity?: number;
+	rotate?: number;
+};
+
 export type MotionProps = {
-	animate: {
-		x?: number;
-		y?: number;
-		scale?: number;
-		opacity?: number;
-		rotate?: number;
-	};
+	animate: AnimateOpts | string;
+	variants: {
+		[key: string]: AnimateOpts;
+	}
 	transition?: SpringOpts | TweenOpts;
 };
 
 export const motion: Action<HTMLElement, MotionProps> = (node, props) => {
 	const { transition } = props;
 
-	console.log(props);
+	const isVariant = typeof props.animate === 'string';
 
-	const values =
-		transition?.type === 'tween' ? handleTween(node, props) : handleSpring(node, props);
+	const animationStores: (Tweened<AnimateOpts> | Spring<AnimateOpts>)[] = new Array(isVariant ? node.children.length + 1 : 1);
+	const unsubscribers = new Array(isVariant ? node.children.length + 1 : 1);
 
-	const unsubscribe = values.subscribe(({ x, y, opacity, scale, rotate }) => {
+	if (typeof props.animate === 'string') {
+		props.animate = props.variants[props.animate];
+	}
+
+	// Animate root node
+	animationStores[0] = transition?.type === 'tween' ? handleTween(node, props) : handleSpring(node, props);
+	unsubscribers[0] = animationStores[0].subscribe(({ x, y, opacity, scale, rotate }) => {
 		node.style.transform = `translate(${x}px, ${y}px) scale(${scale ?? 1}) rotate(${rotate ?? 0}deg)`;
 		node.style.opacity = `${opacity ?? 1}`;
 	});
 
+	// Animating children
+	if (isVariant) {
+		for (let i = 1; i <= node.children.length; i++) {
+			const child = node.children[i - 1] as HTMLElement;
+			const variantString = child.getAttribute('data-motion-variant');
+
+			if (variantString) {
+				const variant = JSON.parse(variantString);
+				animationStores[i] = transition?.type === 'tween' ? handleTween(child, { ...props, animate: variant }) : handleSpring(child, { ...props, animate: variant });
+				unsubscribers[i] = animationStores[i].subscribe(({ x, y, opacity, scale, rotate }) => {
+					child.style.transform = `translate(${x}px, ${y}px) scale(${scale ?? 1}) rotate(${rotate ?? 0}deg)`;
+					child.style.opacity = `${opacity ?? 1}`;
+				});
+			}	
+		}		
+	}
+
+	console.log(animationStores);
+
 	return {
 		update(newProps) {
-			const { animate } = newProps;
-			values.update((updated) => {
-				return {
-					x: animate?.x ?? updated.x,
-					y: animate?.y ?? updated.y,
-					opacity: animate?.opacity ?? updated.opacity,
-					scale: animate?.scale ?? updated.scale,
-					rotate: animate?.rotate ?? updated.rotate
-				};
-			});
+			if (typeof newProps.animate === 'string') {
+				newProps.animate = newProps.variants[newProps.animate];
+				const { animate } = newProps;
+				
+				// reanimate root node
+				animationStores[0].update((updated) => {
+					return {
+						x: animate?.x ?? updated.x,
+						y: animate?.y ?? updated.y,
+						opacity: animate?.opacity ?? updated.opacity,
+						scale: animate?.scale ?? updated.scale,
+						rotate: animate?.rotate ?? updated.rotate
+					};
+				});
+			}
 		},
 		destroy() {
-			unsubscribe();
+			unsubscribers.forEach((unsubscriber) => {
+				unsubscriber();
+			});
 		}
 	};
 };
@@ -60,13 +105,10 @@ export const motion: Action<HTMLElement, MotionProps> = (node, props) => {
 function handleTween(
 	node: HTMLElement,
 	props: MotionProps
-): Tweened<{
-	x: number;
-	y: number;
-	opacity: number;
-	scale: number;
-	rotate: number;
-}> {
+): Tweened<AnimateOpts> {
+	if (typeof props.animate === "string") {
+		props.animate = props.variants[props.animate];
+	}
 	const { animate, transition } = props;
 
 	if (transition && transition.type === 'tween') {
@@ -94,7 +136,7 @@ function handleTween(
 			};
 		});
 
-		return values;
+		return values as Tweened<AnimateOpts>;
 	} else {
 		throw new Error('Incorrect Transition Type!');
 	}
@@ -103,16 +145,13 @@ function handleTween(
 function handleSpring(
 	node: HTMLElement,
 	props: MotionProps
-): Spring<{
-	x: number;
-	y: number;
-	opacity: number;
-	scale: number;
-	rotate: number;
-}> {
+): Spring<AnimateOpts> {
+	if (typeof props.animate === "string") {
+		props.animate = props.variants[props.animate];
+	}
 	const { animate, transition } = props;
 
-	if ((transition && transition.type === 'spring') || !transition) {
+	if ((transition && transition.type === 'spring') || !transition?.type) {
 		const values = spring(
 			{
 				x: 0,
@@ -138,7 +177,7 @@ function handleSpring(
 			};
 		});
 
-		return values;
+		return values as Spring<AnimateOpts>;
 	} else {
 		throw new Error('Incorrect Transition Type!');
 	}
