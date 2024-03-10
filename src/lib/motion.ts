@@ -64,7 +64,12 @@ export const motion: Action<HTMLElement, MotionProps> = (node, props) => {
 			const variantString = child.getAttribute('data-motion-variant');
 
 			if (variantString) {
-				const variant = JSON.parse(variantString);
+				let variant = JSON.parse(variantString);
+				variant = {
+					...variant,
+					scale: variant.scale - (props.animate.scale === undefined ? 0 : props.animate.scale === 1 ? 0 : props.animate.scale),
+					rotate: variant.rotate - (props.animate.rotate ?? 0),
+				}
 				animationStores[i] = transition?.type === 'tween' ? handleTween(child, { ...props, animate: variant }) : handleSpring(child, { ...props, animate: variant });
 				unsubscribers[i] = animationStores[i].subscribe(({ x, y, opacity, scale, rotate }) => {
 					child.style.transform = `translate(${x}px, ${y}px) scale(${scale ?? 1}) rotate(${rotate ?? 0}deg)`;
@@ -73,8 +78,6 @@ export const motion: Action<HTMLElement, MotionProps> = (node, props) => {
 			}	
 		}		
 	}
-
-	console.log(animationStores);
 
 	return {
 		update(newProps) {
