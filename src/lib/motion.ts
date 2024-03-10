@@ -33,7 +33,7 @@ export type AnimateOpts = {
 export type MotionProps = {
 	animate: AnimateOpts | string;
 	variants: {
-		[key: string]: AnimateOpts;
+		[key: string]: AnimateOpts & { transition: TransitionOpts };
 	}
 	transition?: SpringOpts | TweenOpts;
 };
@@ -57,25 +57,21 @@ export const motion: Action<HTMLElement, MotionProps> = (node, props) => {
 		node.style.opacity = `${opacity ?? 1}`;
 	});
 
-	// Animating children
+	// Animate children
 	if (isVariant) {
 		for (let i = 1; i <= node.children.length; i++) {
 			const child = node.children[i - 1] as HTMLElement;
-			const variantString = child.getAttribute('data-motion-variant');
+			
+			handleChild(child, props, i, animationStores, unsubscribers);
 
-			if (variantString) {
-				let variant = JSON.parse(variantString);
-				variant = {
-					...variant,
-					scale: variant.scale - (props.animate.scale === undefined ? 0 : props.animate.scale === 1 ? 0 : props.animate.scale),
-					rotate: variant.rotate - (props.animate.rotate ?? 0),
+			// Animate subsequent children
+			for (let j = 0; j <= child.children.length; j++) {
+				if (!child.children[j]) {
+					break;
 				}
-				animationStores[i] = transition?.type === 'tween' ? handleTween(child, { ...props, animate: variant }) : handleSpring(child, { ...props, animate: variant });
-				unsubscribers[i] = animationStores[i].subscribe(({ x, y, opacity, scale, rotate }) => {
-					child.style.transform = `translate(${x}px, ${y}px) scale(${scale ?? 1}) rotate(${rotate ?? 0}deg)`;
-					child.style.opacity = `${opacity ?? 1}`;
-				});
-			}	
+				const subChild = child.children[j] as HTMLElement;
+				handleChild(subChild, props, i, animationStores, unsubscribers);
+			}
 		}		
 	}
 
@@ -104,6 +100,27 @@ export const motion: Action<HTMLElement, MotionProps> = (node, props) => {
 		}
 	};
 };
+
+function handleChild(child: HTMLElement, props: MotionProps, i: number, animationStores: (Tweened<AnimateOpts> | Spring<AnimateOpts>)[], unsubscribers: (() => void)[]){
+	const variantString = child.getAttribute('data-motion-variant');
+	const { transition } = props;
+
+	if (typeof props.animate !== 'string') {
+		if (variantString) {
+			let variant = JSON.parse(variantString);
+			variant = {
+				...variant,
+				scale: variant.scale - (props.animate.scale === undefined ? 0 : props.animate.scale === 1 ? 0 : props.animate.scale),
+				rotate: variant.rotate - (props.animate.rotate ?? 0),
+			}
+			animationStores[i] = transition?.type === 'tween' ? handleTween(child, { ...props, animate: variant }) : handleSpring(child, { ...props, animate: variant });
+			unsubscribers[i] = animationStores[i].subscribe(({ x, y, opacity, scale, rotate }) => {
+				child.style.transform = `translate(${x}px, ${y}px) scale(${scale ?? 1}) rotate(${rotate ?? 0}deg)`;
+				child.style.opacity = `${opacity ?? 1}`;
+			});
+		}
+	}
+}
 
 function handleTween(
 	node: HTMLElement,
