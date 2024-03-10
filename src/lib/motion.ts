@@ -110,7 +110,7 @@ function handleChild(child: HTMLElement, props: MotionProps, i: number, animatio
 			let variant = JSON.parse(variantString);
 			variant = {
 				...variant,
-				scale: variant.scale - (props.animate.scale === undefined ? 0 : props.animate.scale === 1 ? 0 : props.animate.scale),
+				//scale: variant.scale - (props.animate.scale === undefined ? 0 : props.animate.scale === 1 ? 0 : props.animate.scale),
 				rotate: variant.rotate - (props.animate.rotate ?? 0),
 			}
 			animationStores[i] = transition?.type === 'tween' ? handleTween(child, { ...props, animate: variant }) : handleSpring(child, { ...props, animate: variant });
